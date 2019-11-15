@@ -37,49 +37,30 @@ function naiveMult!(C,A,B)
 end
 
 function blockedMult(A::AbstractMatrix,B::AbstractMatrix)
-    m = size(A,1)
-    n = size(B,2)
     @boundscheck size(A,2) == size(B,1)
     TS = promote_op(matprod, eltype(A), eltype(B))
-    mr = 8
-    nr = 4
-
-    C = zeros(TS, m, n)
-    tempC = Matrix{TS}(undef, mr, nr)
-    tempA = Matrix{TS}(undef, mr, size(A,1))
-    tempB = Matrix{TS}(undef, nr, size(B,2))
-    #tempC = SMatrix{mr, nr, TS}
-    #tempA = SMatrix{mr, m, TS}
-    #tempB = SMatrix{nr, n, TS}
-    return blockedMult!(C, A, B, tempA, tempB, tempC, m,n,Val{mr}(), Val{nr}())
+    C = zeros(TS, size(A,1), size(B,2))
+    return blockedMult!(C, A, B)
 end
 
 
-function blockedMult!(C, A, B, tempA, tempB, tempC,m,n, ::Val{mr}, ::Val{nr}) where {mr, nr}
-    @inbounds for i in 1:mr:size(A,1)                # iterates over cols of A (rows of B)
-        tempA .= (@view A[i:i+mr-1,:])
-        for j in 1:nr:size(B,2)                      # iterates over rows of begin
-            tempB .= (@view B[:,j:j+nr-1])'
-            #tempC = SizedMatrix{mr,nr}(C[i:i+mr-1,j:j+nr-1]) #Load C into registers
-            tempC .= @view C[i:i+mr-1,j:j+nr-1] #Load C into registers
-            microkernel(tempA,tempB,tempC,Val{mr}(), Val{nr}())
-            C[i:i+mr-1,j:j+nr-1] .= tempC
+function blockedMult!(C, A, B)
+    bs = 16
+    n = size(A,1)
+    @inbounds for kk in 1:bs:n               # iterates over cols of A (rows of B)
+        for jj in 1:bs:n                     # iterates over rows of B
+            for i in 1:n                     # pick slice A[i,kk:kk+bs]
+               for j in jj:jj+bs-1           # Make dot product  A[i,kk:kk+bs] * B_block[:,j] for all j
+                   s = C[i,j]
+                   @simd for k in kk:kk+bs-1
+                      s += A[i,k] * B[k,j]
+                   end
+                   C[i,j] =s
+               end
+            end
         end
     end
     return C
-end
-
-function microkernel(tempA,tempB,tempC,::Val{mr}, ::Val{nr}) where {mr, nr}
-    @inbounds for p in 1:size(tempA,2)               # Rank 1 updates
-        #poff = (p-1)*mr
-        #for jj in 1:nr
-        #    b = tempB[jj,p]
-        #    joff = (jj-1)*mr
-        #    @simd for ii in 1:mr
-        #        tempC[ii+joff] += tempA[ii+poff] * b
-        #    end
-        #end
-    end
 end
 
 function pad!(A,B,m,n,p)
@@ -176,44 +157,3 @@ function strassenRecurse(A::AbstractMatrix,B::AbstractMatrix)
         return strassenBase(A,B,strassenRecurse)
     end
 end
-
-
-function testMults(N::Int64,T)
-    slowValid=0
-    stupidValid=0
-    strassenValid=0
-    A = rand(T,N,N)
-    B = rand(T,N,N)
-
-    #precompile
-    x = rand(T,16,16)
-    mult(x,x)
-    naiveMult(x,x)
-    println("b")
-    blockedMult(x,x)
-    #@code_warntype blockedMult!(x,x,x)
-    strassenNoRecurse(x,x)
-    strassenRecurse(x,x)
-
-    # when btime ing use $A etc)
-    #C2=@time strassenNoRecurse(A,B)
-    C  = @time mult(A,B)
-    C3 = @time blockedMult(A,B)
-    C1 = @time naiveMult(A,B)
-    C2 = @time strassenNoRecurse(A,B)
-    #C3=@btime strassenRecurse($A,$B)
-
-    for i in 1:N
-        for j in 1:N
-            slowValid = max(slowValid, abs(C[i,j]-C1[i,j]))
-            stupidValid = max(stupidValid, abs(C[i,j]-C2[i,j]))
-            strassenValid = max(strassenValid, abs(C[i,j]-C3[i,j]))
-        end
-    end
-
-    println(slowValid)
-    println(stupidValid)
-    println(strassenValid)
-end
-
-testMults(400, Int)

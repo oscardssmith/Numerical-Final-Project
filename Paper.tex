@@ -1,0 +1,95 @@
+
+\documentclass{article}         % this is a comment 
+\usepackage[top=2cm, bottom=2cm, left=1cm, right=2cm]{geometry}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{mathtools}
+\usepackage{listings}
+\usepackage{float}
+\usepackage[dvipsnames]{xcolor}
+\DeclarePairedDelimiter{\ceil}{\lceil}{\rceil}
+\DeclarePairedDelimiter{\floor}{\lfloor}{\rfloor}
+\newcommand{\lt}{\symbol{"3C}}% Less than
+\newcommand{\gt}{\symbol{"3E}}% Greater than
+
+%(after a percent sign)
+% always start with \documentclass{article}
+\begin{document}                %     and work inside \begin 
+\section*{Introduction}
+Multiplication of $n$ by $n$ matrices is a bottleneck for a variety of important applications, especially since the speed of many other linear algebra problems including finding inverses, many matrix factorizations, and eigenvalues.
+
+The BLAS Library is a 
+
+If we represent the matrices $A=\begin{pmatrix}
+A_{00}&A_{01}\\A_{10}&A_{11}
+\end{pmatrix}$, and likewise for $B$ and $C$, then the fundamental operation $C = \alpha AB+C$ can be decomposed into the 4 block equations 
+\begin{equation}
+\begin{split}
+C_{00}&=\alpha(A_{00}B_{00}+A_{01}B_{10})+C_{00}\\
+C_{01}&=\alpha(A_{00}B_{01}+A_{10}B_{11})+C_{01}\\
+C_{10}&=\alpha(A_{10}B_{00}+A_{11}B_{10})+C_{10}\\
+C_{11}&=\alpha(A_{10}B_{01}+A_{11}B_{11})+C_{11}\\
+\end{split}
+\end{equation}
+This split uses 8 multiplications of size $\frac n2$, which produces the typical runtime of $O(n^3)$.\\ However, if we instead create 7 temporary matrices, $M_0,\dots, M_6$, with
+
+\begin{equation}
+\begin{split}
+M_0&=\alpha(A_{00}+A_{11})(B_{00}+B_{11})\\
+M_1&=\alpha(A_{10}+A_{11})B_{00}\\
+M_2&=\alpha A_{00}(B_{01}-B_{11})\\
+M_3&=\alpha A_{11}(B_{10}-B_{00})\\
+M_4&=\alpha(A_{00}+A_{01})B_{11}\\
+M_5&=\alpha(A_{10}-A_{00})(B_{00}+B_{01})\\
+M_6&=\alpha(A_{01}-A_{11})(B_{10}+B_{11})\\
+\end{split}
+\end{equation}
+and add and subtract ($O(n^2)$) these block matrices to create the parts of $C$ as follows
+\begin{equation}
+\begin{split}
+C_{00}&=M_0+M_3+M_6-M_4+C_{00}\\
+C_{01}&=M_2+M_4+C_{10}\\
+C_{10}&=M_1+M_3+C_{01}\\
+C_{11}&=M_0+M_2+M_5-M_1+C_{11}\\
+\end{split}
+\end{equation}
+This works because (ignoring the $\alpha$ and $C_{ij}$ since they obviously work out simply), substitution of these equations yields
+\begin{equation}
+\begin{split}
+C_{00}&=(A_{00}+A_{11})(B_{00}+B_{11})+A_{11}(B_{10}-B_{00})+(A_{01}-A_{11})(B_{10}+B_{11})-(A_{00}+A_{01})B_{11}\\
+&=A_{00}(B_{00}+B_{11}-B_{11})\\
+&\indent+A_{01}(B_{10}+B_{11}-B_{11})\\
+&\indent+A_{11}(B_{00}+B_{01}+B_{10}-B_{00}-B_{10}-B_{11})\\
+&=A_{00}B_{00}+A_{01}B_{10}\\
+C_{01}&=A_{00}(B_{01}-B_{11})+(A_{00}+A_{01})B_{11}\\
+&=A_{00}(B_{01}-B_{11}+B_{11})\\
+&\indent+A_{01}B_{11}\\
+&=A_{00}B_{01}+A_{01}B_{11}\\
+C_{10}&=(A_{10}+A_{11})B_{00}+A_{11}(B_{10}-B_{00})\\
+&=A_{10}B_{00}\\
+&\indent+A_{11}(B_{10}+B_{00}-B_{00})\\
+&=A_{10}B_{00}+A_{11}B_{10}\\
+C_{11}&=(A_{00}+A_{11})(B_{00}+B_{11})+A_{00}(B_{01}-B_{11})+(A_{10}-A_{00})(B_{00}+B_{01})-(A_{10}+A_{11})B_{00}\\
+&=A_{00}(B_{00}+B_{11}+B_{01}-B_{11}-B_{00}-B_{01})\\
+&\indent+A_{10}(B_{00}+B_{01}-B_{00})\\
+&\indent+A_{11}(B_{00}+B_{11}-B_{00})\\
+&=A_{10}B_{01}+A_{11}B_{11}\\
+\end{split}
+\end{equation}
+What this is effectively doing is using the linear dependence of the original block matrix equations to turn a multiplication into several extra additions. Note that this can be done recursively to give $O(n)=7O(\frac{n}{2})+c*n^2$ for some constant $c$. By the master equation, this is $O(n)=n^{\log_2{7}}\approx n^{2.8}$.
+
+
+\section*{Implimentation}
+Our code implements 3 main methods for multiplication: naiveMult, which is a fairly well optimized $n^{3}$ multiplication
+algorithm. For small matrices, this is within a 1.5x time of the highly optimized $C$ library, BLAS. For larger matrices, however this is less optimized with respect to cache usage.\\
+Our second is a 1 level strassen multiplication which can use either Julia's default multiplication (blas), or naiveMult.\\
+When using naiveMult this doesn't catch up to BLAS, but if julia's mult is called for the small multiplications, it is able
+in many cases ($n=m>200$).\\
+The third is a recursive Strassen implementation that splits until one of the dimmensions of the arrays gets smaller than a constant.
+This strategy is very slow due to excessive allocation, but once the matrices get large enough ($m=n>2000$), it starts to out-perform both
+base and the 1 level algorithm.\\
+
+\section*{Apendix A: code}
+\lstinputlisting{matMult.jl}
+
+\end{document}

@@ -178,42 +178,4 @@ function strassenRecurse(A::AbstractMatrix,B::AbstractMatrix)
 end
 
 
-function testMults(N::Int64,T)
-    slowValid=0
-    stupidValid=0
-    strassenValid=0
-    A = rand(T,N,N)
-    B = rand(T,N,N)
 
-    #precompile
-    x = rand(T,16,16)
-    mult(x,x)
-    naiveMult(x,x)
-    println("b")
-    blockedMult(x,x)
-    #@code_warntype blockedMult!(x,x,x)
-    strassenNoRecurse(x,x)
-    strassenRecurse(x,x)
-
-    # when btime ing use $A etc)
-    #C2=@time strassenNoRecurse(A,B)
-    C  = @time mult(A,B)
-    C3 = @time blockedMult(A,B)
-    C1 = @time naiveMult(A,B)
-    C2 = @time strassenNoRecurse(A,B)
-    #C3=@btime strassenRecurse($A,$B)
-
-    for i in 1:N
-        for j in 1:N
-            slowValid = max(slowValid, abs(C[i,j]-C1[i,j]))
-            stupidValid = max(stupidValid, abs(C[i,j]-C2[i,j]))
-            strassenValid = max(strassenValid, abs(C[i,j]-C3[i,j]))
-        end
-    end
-
-    println(slowValid)
-    println(stupidValid)
-    println(strassenValid)
-end
-
-testMults(400, Int)

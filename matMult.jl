@@ -37,6 +37,7 @@ function naiveMult!(C,A,B)
 end
 
 function blockedMult(A::AbstractMatrix,B::AbstractMatrix)
+
     @boundscheck size(A,2) == size(B,1)
     TS = promote_op(matprod, eltype(A), eltype(B))
     C = zeros(TS, size(A,1), size(B,2))
@@ -46,6 +47,9 @@ end
 
 function blockedMult!(C, A, B)
     bs = 16
+    @assert size(A,1)%bs==0
+    @assert size(B,2)%bs==0
+    @assert size(A,2)%bs==0
     n = size(A,1)
     @inbounds for kk in 1:bs:n               # iterates over cols of A (rows of B)
         for jj in 1:bs:n                     # iterates over rows of B
@@ -63,51 +67,43 @@ function blockedMult!(C, A, B)
     return C
 end
 
-function pad!(A,B,m,n,p)
-    if p%2 == 1
-        if n%2 ==1
-            Anew=zeros(eltype(A), n+1,p+1)
-            Anew[1:end-1,1:end-1] .= A
-            A = Anew
+function padAndSplit!(A,width,height)
+    a1,a2=div(width+1,2),div(height+1,2)
+
+    pad1=width%2
+    pad2=height%2
+    @views begin
+        A00 = A[1:a1,1:a2]
+        if pad1==0
+            A10 = A[a1+1:end,1:a2]
         else
-            Anew=zeros(eltype(A), n,p+1)
-            Anew[1:end,1:end-1] .= A
-            A = Anew
+            A10=zeros(eltype(A),div(width+1,2),div(height+1,2))
+            A10[1:end-pad1,1:end] .= A[a1+1:end,1:a2]
         end
-        if m%2==1
-            Bnew=zeros(eltype(B), p+1, m+1)
-            Bnew[1:end-1,1:end-1] .= B
-            B = Bnew
+        if pad2==0
+            A01 = A[1:a1,a2+1:end]
         else
-            Bnew=zeros(eltype(B), p+1, m)
-            Anew[1:end,1:end-1] .= B
-            B = Bnew
+            A01=zeros(eltype(A),div(width+1,2),div(height+1,2))
+            A01[1:end,1:end-pad2] .= A[1:a1,a2+1:end]
         end
-    else
-        if n%2 ==1
-            Anew=zeros(eltype(A), n+1, p)
-            Anew[1:end-1,1:end] .= A
-            A = Anew
+        if pad1+pad2==0
+            A11 = A[a1+1:end,a2+1:end]
+        else
+            A11=zeros(eltype(A),div(width+1,2),div(height+1,2))
+            A11[1:end-pad1,1:end-pad2] .= A[a1+1:end,a2+1:end]
         end
-        if m%2==1
-            Bnew=zeros(eltype(B), p, m+1)
-            Bnew[1:end,1:end-1] .= B
-            B = Bnew
-        end
+        return A00,A10,A01,A11
     end
-    return A,B
+
 end
 
 function strassenBase(A::AbstractMatrix,B::AbstractMatrix, mult)
     @boundscheck size(A,2) == size(B,1)
     n, p, m = size(A,1), size(B,1), size(B,2)
-
-    a1,a2 = (div(n,2),div(p,2))
-    b1,b2 = (div(p,2),div(m,2))
-
-    A, B = pad!(A,B,m,n,p)
+    
     TS = promote_op(matprod, eltype(A), eltype(B))
-    C = zeros(TS, size(A,1), size(B,2))
+    
+    C = zeros(TS, n+n%2, m+m%2)
     return strassenBase!(C,A,B,mult)[1:n, 1:m]
 end
 
@@ -115,19 +111,12 @@ function strassenBase!(C:: AbstractMatrix, A::AbstractMatrix,B::AbstractMatrix, 
     """ Takes in pre-padded arrays"""
 
     n, p, m = size(A,1), size(B,1), size(B,2)
+    a1,a2 = (div(n+1,2),div(p+1,2))
+    b1,b2 = (div(p+1,2),div(m+1,2))
 
-    a1,a2 = (div(n,2),div(p,2))
-    b1,b2 = (div(p,2),div(m,2))
     @inbounds @fastmath @views begin
-        A00 = A[1:a1,1:a2]
-        A10 = A[a1+1:end,1:a2]
-        A01 = A[1:a1,a2+1:end]
-        A11 = A[a1+1:end,a2+1:end]
-
-        B00 =B[1:b1,1:b2]
-        B10 =B[b1+1:end,1:b2]
-        B01 =B[1:b1,b2+1:end]
-        B11=B[b1+1:end,b2+1:end]
+        A00,A10,A01,A11=padAndSplit!(A,n,p)
+        B00,B10,B01,B11=padAndSplit!(B,p,m)
 
         M0=mult(A00.+A11, B00.+B11)
         M1=mult(A10.+A11, B00)
@@ -150,7 +139,7 @@ function strassenNoRecurse(A::AbstractMatrix,B::AbstractMatrix)
 end
 
 function strassenRecurse(A::AbstractMatrix,B::AbstractMatrix)
-    minSize = 501
+    minSize = 16
     if(size(A,1)<minSize||size(A,2)<minSize||size(B,1)<minSize||size(B,2)<minSize)
         return mult(A,B)
     else

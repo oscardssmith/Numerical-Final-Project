@@ -19,6 +19,7 @@ function getTimes(range,T,numTests,multfunction)
 end
 
 function testMults(N::Int64,T)
+
     slowValid=0
     stupidValid=0
     strassenValid=0
@@ -38,10 +39,11 @@ function testMults(N::Int64,T)
     # when btime ing use $A etc)
     #C2=@time strassenNoRecurse(A,B)
     C  = @time mult(A,B)
-    C3 = @time blockedMult(A,B)
+    
     C1 = @time naiveMult(A,B)
     C2 = @time strassenNoRecurse(A,B)
-    #C3=@btime strassenRecurse($A,$B)
+    C3 = @time blockedMult(A,B)
+    #C3=@time strassenRecurse(A,B)
 
     for i in 1:N
         for j in 1:N
@@ -55,8 +57,8 @@ function testMults(N::Int64,T)
     println(stupidValid)
     println(strassenValid)
 end
-#testMults(400, Int)
+testMults(800, Int)
 #getTimes(200:210,Int64,strassenRecurse)
 
-println(getTimes(2 .^(3:10),Int64,20,strassenRecurse))
+#println(getTimes(2 .^(3:10),Int64,20,strassenRecurse))
 

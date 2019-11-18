@@ -9,7 +9,7 @@ using StaticArrays
 promote_op = Base.promote_op
 
 matprod(x, y) = x*y + x*y
-
+const bs=16
 function mult(A::AbstractMatrix, B::AbstractMatrix)
     @boundscheck size(A,2) == size(B,1)
     A*B
@@ -37,29 +37,31 @@ function naiveMult!(C,A,B)
 end
 
 function blockedMult(A::AbstractMatrix,B::AbstractMatrix)
-
+    
     @boundscheck size(A,2) == size(B,1)
     TS = promote_op(matprod, eltype(A), eltype(B))
     C = zeros(TS, size(A,1), size(B,2))
-    return blockedMult!(C, A, B)
+    Btemp = zeros(eltype(B),bs,bs)
+    return blockedMult!(C, A, B, Btemp)
 end
 
 
-function blockedMult!(C, A, B)
-    bs = 16
+function blockedMult!(C, A, B, Btemp)
     @assert size(A,1)%bs==0
     @assert size(B,2)%bs==0
     @assert size(A,2)%bs==0
     n = size(A,1)
     @inbounds for kk in 1:bs:n               # iterates over cols of A (rows of B)
         for jj in 1:bs:n                     # iterates over rows of B
+            Btemp .= (@view B[kk:kk+bs-1,jj:jj+bs-1])'
             for i in 1:n                     # pick slice A[i,kk:kk+bs]
-               for j in jj:jj+bs-1           # Make dot product  A[i,kk:kk+bs] * B_block[:,j] for all j
-                   s = C[i,j]
-                   @simd for k in kk:kk+bs-1
-                      s += A[i,k] * B[k,j]
+               
+               for j in 1:bs           # Make dot product  A[i,kk:kk+bs] * B_block[:,j] for all j
+                   s = C[i,j+jj-1]
+                   @simd for k in 1:bs
+                      s += A[i,k+kk-1] * Btemp[j,k]
                    end
-                   C[i,j] =s
+                   C[i,j+jj-1] =s
                end
             end
         end
@@ -139,7 +141,7 @@ function strassenNoRecurse(A::AbstractMatrix,B::AbstractMatrix)
 end
 
 function strassenRecurse(A::AbstractMatrix,B::AbstractMatrix)
-    minSize = 16
+    minSize = 500
     if(size(A,1)<minSize||size(A,2)<minSize||size(B,1)<minSize||size(B,2)<minSize)
         return mult(A,B)
     else

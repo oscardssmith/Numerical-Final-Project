@@ -148,3 +148,56 @@ function strassenRecurse(A::AbstractMatrix,B::AbstractMatrix)
         return strassenBase(A,B,strassenRecurse)
     end
 end
+
+function strassenStripedNoRecurse(A::AbstractMatrix,B::AbstractMatrix)
+    return strassenBase(A, B, blockedMult)
+end
+
+function strassenStripedRecurse(A::AbstractMatrix,B::AbstractMatrix)
+    minSize = 500
+    if(size(A,1)<minSize||size(A,2)<minSize||size(B,1)<minSize||size(B,2)<minSize)
+        return blockedMult(A,B)
+    else
+        return strassenBase(A,B,strassenStripedRecurse)
+    end
+end
+
+function strassenNaiveNoRecurse(A::AbstractMatrix,B::AbstractMatrix)
+    return strassenBase(A, B, naiveMult)
+end
+
+function strassenNaiveRecurse(A::AbstractMatrix,B::AbstractMatrix)
+    minSize = 500
+    if(size(A,1)<minSize||size(A,2)<minSize||size(B,1)<minSize||size(B,2)<minSize)
+        return naiveMult(A,B)
+    else
+        return strassenBase(A,B,strassenNaiveRecurse)
+    end
+end
+
+function strassenOptimalRecurse(A::AbstractMatrix,B::AbstractMatrix)
+    minSize = 340
+    if(size(A,1)<minSize||size(A,2)<minSize||size(B,1)<minSize||size(B,2)<minSize)
+        return mult(A,B)
+    else
+        return strassenBase(A,B,strassenOptimalRecurse)
+    end
+end
+
+function strassenRecurse16(A::AbstractMatrix,B::AbstractMatrix)
+    minSize = 16
+    if(size(A,1)<minSize||size(A,2)<minSize||size(B,1)<minSize||size(B,2)<minSize)
+        return mult(A,B)
+    else
+        return strassenBase(A,B,strassenRecurse16)
+    end
+end
+
+function strassenRecurse16Naive(A::AbstractMatrix,B::AbstractMatrix)
+    minSize = 16
+    if(size(A,1)<minSize||size(A,2)<minSize||size(B,1)<minSize||size(B,2)<minSize)
+        return naiveMult(A,B)
+    else
+        return strassenBase(A,B,strassenRecurse16Naive)
+    end
+end

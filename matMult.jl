@@ -37,7 +37,7 @@ function naiveMult!(C,A,B)
 end
 
 function blockedMult(A::AbstractMatrix,B::AbstractMatrix)
-    
+
     @boundscheck size(A,2) == size(B,1)
     TS = promote_op(matprod, eltype(A), eltype(B))
     C = zeros(TS, size(A,1), size(B,2))
@@ -47,15 +47,12 @@ end
 
 
 function blockedMult!(C, A, B, Btemp)
-    @assert size(A,1)%bs==0
-    @assert size(B,2)%bs==0
-    @assert size(A,2)%bs==0
     n = size(A,1)
-    @inbounds for kk in 1:bs:n               # iterates over cols of A (rows of B)
-        for jj in 1:bs:n                     # iterates over rows of B
+    left = n%bs
+    @inbounds @fastmath for kk in 1:bs:n-left        # iterates over cols of A (rows of B)
+        for jj in 1:bs:n-left                     # iterates over rows of B
             Btemp .= (@view B[kk:kk+bs-1,jj:jj+bs-1])'
-            for i in 1:n                     # pick slice A[i,kk:kk+bs]
-               
+            for i in 1:n-left                     # pick slice A[i,kk:kk+bs]
                for j in 1:bs           # Make dot product  A[i,kk:kk+bs] * B_block[:,j] for all j
                    s = C[i,j+jj-1]
                    @simd for k in 1:bs
@@ -63,6 +60,35 @@ function blockedMult!(C, A, B, Btemp)
                    end
                    C[i,j+jj-1] =s
                end
+            end
+        end
+    end
+    if left>0 #not a multiple of 16
+        @inbounds @fastmath for j in 1:n-left
+            for i in 1:n-left
+                s = C[i,j]
+                for k in n-left+1:n
+                    s += A[i,k]*B[k,j]
+                end
+                C[i,j] = s
+            end
+        end
+        @inbounds @fastmath for j in n-left+1:n
+            for i in 1:n
+                s = C[i,j]
+                for k in 1:n
+                    s += A[i,k]*B[k,j]
+                end
+                C[i,j] = s
+            end
+        end
+        @inbounds @fastmath for j in 1:n-left
+            for i in n-left+1:n
+                s = C[i,j]
+                for k in 1:n
+                    s += A[i,k]*B[k,j]
+                end
+                C[i,j] = s
             end
         end
     end
@@ -94,7 +120,7 @@ function padAndSplit!(A,width,height)
             A11=zeros(eltype(A),div(width+1,2),div(height+1,2))
             A11[1:end-pad1,1:end-pad2] .= A[a1+1:end,a2+1:end]
         end
-        return A00,A10,A01,A11
+        return A00,A10,A01,A11,zeros(eltype(A),div(width+1,2),div(height+1,2))
     end
 
 end
@@ -102,9 +128,9 @@ end
 function strassenBase(A::AbstractMatrix,B::AbstractMatrix, mult)
     @boundscheck size(A,2) == size(B,1)
     n, p, m = size(A,1), size(B,1), size(B,2)
-    
+
     TS = promote_op(matprod, eltype(A), eltype(B))
-    
+
     C = zeros(TS, n+n%2, m+m%2)
     return strassenBase!(C,A,B,mult)[1:n, 1:m]
 end
@@ -117,16 +143,25 @@ function strassenBase!(C:: AbstractMatrix, A::AbstractMatrix,B::AbstractMatrix, 
     b1,b2 = (div(p+1,2),div(m+1,2))
 
     @inbounds @fastmath @views begin
-        A00,A10,A01,A11=padAndSplit!(A,n,p)
-        B00,B10,B01,B11=padAndSplit!(B,p,m)
-
-        M0=mult(A00.+A11, B00.+B11)
-        M1=mult(A10.+A11, B00)
-        M2=mult(A00,      B01.-B11)
-        M3=mult(A11,      B10.-B00)
-        M4=mult(A00.+A01, B11)
-        M5=mult(A10.-A00, B00.+B01)
-        M6=mult(A01.-A11, B10.+B11)
+        A00,A10,A01,A11,Atemp=padAndSplit!(A,n,p)
+        B00,B10,B01,B11,Btemp=padAndSplit!(B,p,m)
+        Atemp .= A00.+A11
+        Btemp .= B00.+B11
+        M0=mult(Atemp, Btemp)
+        Atemp .= A10.+A11
+        M1=mult(Atemp, B00)
+        Btemp .= B01.-B11
+        M2=mult(A00, Btemp)
+        Btemp .=B10.-B00
+        M3=mult(A11,Btemp)
+        Atemp .= A00.+A01
+        M4=mult(Atemp, B11)
+        Atemp .= A10.-A00
+        Btemp .= B00.+B01
+        M5=mult(Atemp, Btemp)
+        Atemp .= A01.-A11
+        Btemp .= B10.+B11
+        M6=mult(Atemp, Btemp)
 
         C[1:a1,1:a2] .= M0.+M3.+M6.-M4
         C[a1+1:end,1:b2] .= M1.+M3

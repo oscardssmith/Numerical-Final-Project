@@ -2,8 +2,7 @@ using LinearAlgebra
 using BenchmarkTools
 using Random
 using InteractiveUtils
-using Unrolled
-using StaticArrays
+import Base.Threads.@spawn
 
 # This shouldn't fix things, but does
 promote_op = Base.promote_op
@@ -147,21 +146,27 @@ function strassenBase!(C:: AbstractMatrix, A::AbstractMatrix,B::AbstractMatrix, 
         B00,B10,B01,B11,Btemp=padAndSplit!(B,p,m)
         Atemp .= A00.+A11
         Btemp .= B00.+B11
-        M0=mult(Atemp, Btemp)
+        m0= @spawn mult(Atemp, Btemp)
         Atemp .= A10.+A11
-        M1=mult(Atemp, B00)
+        m1= @spawn mult(Atemp, B00)
         Btemp .= B01.-B11
-        M2=mult(A00, Btemp)
+        m2= @spawn mult(A00, Btemp)
         Btemp .=B10.-B00
-        M3=mult(A11,Btemp)
+        m3= @spawn mult(A11,Btemp)
         Atemp .= A00.+A01
-        M4=mult(Atemp, B11)
+        m4= @spawn mult(Atemp, B11)
         Atemp .= A10.-A00
         Btemp .= B00.+B01
-        M5=mult(Atemp, Btemp)
+        m5= @spawn mult(Atemp, Btemp)
         Atemp .= A01.-A11
         Btemp .= B10.+B11
-        M6=mult(Atemp, Btemp)
+        M6=  mult(Atemp, Btemp)
+	M0 = fetch(m0)
+	M1 = fetch(m1)
+        M2 = fetch(m2)
+        M3 = fetch(m3)
+        M4 = fetch(m4)
+	M5 = fetch(m5)
 
         C[1:a1,1:a2] .= M0.+M3.+M6.-M4
         C[a1+1:end,1:b2] .= M1.+M3
@@ -211,7 +216,7 @@ function strassenNaiveRecurse(A::AbstractMatrix,B::AbstractMatrix)
 end
 
 function strassenOptimalRecurse(A::AbstractMatrix,B::AbstractMatrix)
-    minSize = 340
+    minSize = 200
     if(size(A,1)<minSize||size(A,2)<minSize||size(B,1)<minSize||size(B,2)<minSize)
         return mult(A,B)
     else

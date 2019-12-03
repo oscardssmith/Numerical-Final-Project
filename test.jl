@@ -3,15 +3,20 @@ using BenchmarkTools
 using Random
 include("matMult.jl")
 
+
 function getTimes(range,T,numTests,multfunction)
+    return getTimes(range,T,T,numTests,multfunction)
+end
+
+function getTimes(range,T1, T2,numTests,multfunction)
     times=zeros(Float64,size(range,1))
     for i in 1:size(range,1)
         N=range[i]
         vals=zeros(Float64,numTests)
         for tests in 1:numTests
 
-            A=rand(T,N,N)
-            B=rand(T,N,N)
+            A=rand(T1,N,N)
+            B=rand(T2,N,N)
             #println(tests)
             vals[tests]=@elapsed multfunction(A,B)
         end
@@ -75,22 +80,33 @@ end
 #println(getTimes(1 .+ 2 .^(5:11),Int64,20,strassenNaiveNoRecurse))
 #println("Base")
 #println(getTimes(2 .^(5:11),Int64,20,mult))
-println("Blocked Mult")
-println(getTimes(1 .+ 2 .^(5:11),Int64,20,blockedMult))
-println("One-Layer Blocked Mult")
-println(getTimes(1 .+ 2 .^(5:11),Int64,20,strassenStripedNoRecurse))
-println("Recursive Blocked Mult")
-println(getTimes(1 .+ 2 .^(5:11),Int64,20,strassenStripedRecurse))
+#println("Blocked Mult")
+#println(getTimes(1 .+ 2 .^(5:11),Int64,20,blockedMult))
+#println("One-Layer Blocked Mult")
+#println(getTimes(1 .+ 2 .^(5:11),Int64,20,strassenStripedNoRecurse))
+#println("Recursive Blocked Mult")
+#println(getTimes(1 .+ 2 .^(5:11),Int64,20,strassenStripedRecurse))
 #println("Recursive 16")
 #println(getTimes(2 .^(5:11),Int64,20,strassenRecurse16))
 #println("Recursive 16 Naive Mult")
 #println(getTimes(2 .^(5:11),Int64,20,strassenRecurse16Naive))
 #println("Recursive 340 Base Mult")
 #println(getTimes(2 .^(5:11),Int64,20,strassenOptimalRecurse))
-#println("Floating points:")
-#println("base")
-#println(getTimes(2 .^(5:11),Float64,20,mult))
-#println("One-layer")
-#println(getTimes(2 .^(5:11),Float64,20,strassenNoRecurse))
+
+println("Floating points:")
+println("base")
+println(getTimes(1 .+ 2 .^(5:12),Float64,20,mult))
+println("One-layer")
+println(getTimes(1 .+ 2 .^(5:12),Float64,20,strassenNoRecurse))
 #println("Recursive")
 #println(getTimes(2 .^(5:11),Float64,20,strassenRecurse))
+
+#println("Mixed Types:")
+#println("base")
+#println(getTimes(2 .^(5:11),Int,Float64,20,mult))
+#println("One-layer")
+#println(getTimes(2 .^(5:11),Int,Float64,20,strassenNoRecurse))
+#println("Recursive")
+#println(getTimes(2 .^(5:11),Int,Float64,20,strassenRecurse))
+#println("Optimal Recursive")
+#println(getTimes(2 .^(5:11),Int,Float64,20,strassenOptimalRecurse))
